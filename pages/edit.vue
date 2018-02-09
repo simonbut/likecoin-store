@@ -103,19 +103,46 @@
       <claim-dialog ref="claimDialog" :couponCode="couponCode" :wallet="wallet" />
     </div>
 
+    <div>
+      <div class="section-title-wrapper">
+        <h2 class="title">Transaction History</h2>
+      </div>
+      <md-table v-if="txLogsTo && txLogsTo.length" class="tx-log-table">
+        <md-table-toolbar class="tx-log-table-row">
+          <md-tabs>
+            <md-tab md-label="To" @click="txLogsActive=txLogsTo"/>
+            <md-tab md-label="From" @click="txLogsActive=txLogsFrom"/>
+          </md-tabs>
+        </md-table-toolbar>
+        <md-table-row class="tx-log-table-row">
+          <md-table-head>ID</md-table-head>
+          <md-table-head md-numeric>Amount</md-table-head>
+        </md-table-row>
+        <md-table-row class="tx-log-table-row" v-for="log in txLogsActive" :key="log.id">
+          <md-table-cell>
+            <nuxt-link :to="{ name: 'tx-id', params: { id: log.id } }">
+              {{ log.id }}
+            </nuxt-link>
+          </md-table-cell>
+          <md-table-cell md-numeric>{{ stringifyLikeCoin(log.value) }}</md-table-cell>
+        </md-table-row>
+      </md-table>
+      <md-progress-bar v-else md-mode="indeterminate"/>
+    </div>
     <view-etherscan :address="wallet" />
   </div>
 </template>
 
 <script>
 import BigNumber from 'bignumber.js';
+import { mapActions, mapGetters } from 'vuex';
 
 import EthHelper from '@/util/EthHelper';
 import User from '@/util/User';
 import LikeCoinAmount from '~/components/LikeCoinAmount';
 import ClaimDialog from '~/components/ClaimDialog';
 import ViewEtherscan from '~/components/ViewEtherscan';
-import { mapActions, mapGetters } from 'vuex';
+import { apiGetTxToByAddr, apiGetTxFromByAddr } from '@/util/api/api';
 
 import EditIcon from '../assets/icons/edit.svg';
 import EditWhiteIcon from '../assets/icons/edit-white.svg';
@@ -139,6 +166,9 @@ export default {
       subtitle: 'Redeem LikeCoin',
       EditIcon,
       EditWhiteIcon,
+      txLogsActive: undefined,
+      txLogsTo: [],
+      txLogsFrom: [],
     };
   },
   components: {
@@ -196,6 +226,10 @@ export default {
         reader.readAsDataURL(files[0]);
       }
     },
+    stringifyLikeCoin(amount) {
+      if (!amount) return 0;
+      return new BigNumber(amount).dividedBy(ONE_LIKE).toFixed(4);
+    },
     async updateInfo() {
       const user = this.getUserInfo;
       this.user = user.user;
@@ -204,7 +238,17 @@ export default {
       this.wallet = user.wallet;
       this.email = user.email;
       const balance = await EthHelper.queryLikeCoinBalance(user.wallet);
-      this.likeCoinValueStr = new BigNumber(balance).dividedBy(ONE_LIKE).toFixed(4);
+      this.likeCoinValueStr = this.stringifyLikeCoin(balance);
+    },
+    async getTxLogs() {
+      const { wallet } = this;
+      const [txLogsTo, txLogsFrom] = await Promise.all([
+        apiGetTxToByAddr(wallet),
+        apiGetTxFromByAddr(wallet),
+      ]);
+      this.txLogsTo = txLogsTo.data;
+      this.txLogsFrom = txLogsFrom.data;
+      if (!this.txLogsActive) this.txLogsActive = this.txLogsTo;
     },
     openPicker() {
       this.isProfileEdit = true;
@@ -243,6 +287,7 @@ export default {
   },
   mounted() {
     this.updateInfo();
+    this.getTxLogs();
   },
 };
 </script>
@@ -515,6 +560,12 @@ $profile-icon-size: 128px;
 
   .section-title-wrapper {
     margin-left: 40px;
+  }
+
+  .tx-log-table {
+    .tx-log-table-row {
+      background-color: $like-gray-1;
+    }
   }
 }
 
